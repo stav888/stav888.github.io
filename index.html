@@ -22,11 +22,20 @@
                 <p class="text-zinc-400 text-sm mt-1">stav888 • <span id="total-count">0</span> repositories</p>
             </div>
             
-            <button onclick="refreshStars()" 
-                    class="flex items-center gap-x-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-2xl text-sm transition-colors">
-                <i class="fa-solid fa-sync-alt"></i>
-                <span>Refresh</span>
-            </button>
+            <div class="flex items-center gap-x-3">
+                <!-- Token Status -->
+                <div id="token-status" onclick="showTokenModal()"
+                     class="flex items-center gap-x-2 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-2xl text-sm cursor-pointer transition-colors">
+                    <i class="fa-solid fa-key text-zinc-400"></i>
+                    <span id="token-text">Connect Token</span>
+                </div>
+                
+                <button onclick="refreshStars()" 
+                        class="flex items-center gap-x-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-2xl text-sm transition-colors">
+                    <i class="fa-solid fa-sync-alt"></i>
+                    <span>Refresh</span>
+                </button>
+            </div>
         </div>
 
         <!-- Search + Sort -->
@@ -243,8 +252,122 @@
             location.reload();
         }
 
+        // ==================== TOKEN HANDLING ====================
+        function getToken() {
+            return localStorage.getItem('github_token') || '';
+        }
+
+        function saveToken(token) {
+            if (token) {
+                localStorage.setItem('github_token', token.trim());
+                updateTokenStatus();
+            }
+        }
+
+        function clearToken() {
+            localStorage.removeItem('github_token');
+            updateTokenStatus();
+        }
+
+        function updateTokenStatus() {
+            const statusEl = document.getElementById('token-status');
+            const textEl = document.getElementById('token-text');
+            
+            if (getToken()) {
+                textEl.innerHTML = `<span class="text-emerald-400">Connected</span>`;
+                statusEl.classList.add('border-emerald-600');
+            } else {
+                textEl.innerHTML = `Connect Token`;
+                statusEl.classList.remove('border-emerald-600');
+            }
+        }
+
+        function showTokenModal() {
+            const token = getToken();
+            const newToken = prompt(
+                "הדבק כאן GitHub Personal Access Token:\n\n(מומלץ ליצור Token עם הרשאת public_repo בלבד)", 
+                token || ""
+            );
+            
+            if (newToken === null) return; // User canceled
+            
+            if (newToken.trim() === "") {
+                if (confirm("למחוק את ה-Token הקיים?")) {
+                    clearToken();
+                }
+            } else {
+                saveToken(newToken);
+                alert("ה-Token נשמר בהצלחה בדפדפן שלך.\n\nהדף יתרענן כדי להשתמש בו.");
+                location.reload();
+            }
+        }
+
+        // Modify fetch to use token if available
+        async function fetchStars() {
+            const username = "stav888";
+            let page = 1;
+            let repos = [];
+            const perPage = 100;
+            const token = getToken();
+
+            try {
+                while (true) {
+                    const headers = {
+                        'Accept': 'application/vnd.github.v3.star+json'
+                    };
+                    
+                    if (token) {
+                        headers['Authorization'] = `token ${token}`;
+                    }
+
+                    const res = await fetch(
+                        `https://api.github.com/users/${username}/starred?per_page=${perPage}&page=${page}`,
+                        { headers }
+                    );
+                    
+                    if (!res.ok) {
+                        if (res.status === 403) {
+                            throw new Error("RATE_LIMIT");
+                        }
+                        throw new Error("GitHub API error");
+                    }
+                    
+                    const data = await res.json();
+                    if (data.length === 0) break;
+                    
+                    repos = repos.concat(data);
+                    if (data.length < perPage) break;
+                    page++;
+                }
+
+                allRepos = repos.map(repo => ({
+                    name: repo.name,
+                    full_name: repo.full_name,
+                    description: repo.description || "No description",
+                    language: repo.language || "Unknown",
+                    stars: repo.stargazers_count,
+                    updated: repo.updated_at,
+                    starred_at: repo.starred_at,
+                    url: repo.html_url
+                }));
+
+                return allRepos;
+            } catch (err) {
+                console.error(err);
+                throw err;
+            }
+        }
+
+        // Initialize token status on load
+        function initToken() {
+            updateTokenStatus();
+        }
+
         // Start
-        window.onload = loadStars;
+        window.onload = function() {
+            initToken();
+            loadStars();
+        };
     </script>
 </body>
 </html>
